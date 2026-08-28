@@ -350,16 +350,35 @@ uv run examples/dp.py
 
 ## Deployment
 
-The service is distributed as a container image.
+The service runs as a container. Building from a clone needs no registry
+access and is the quickest way to get an instance up:
 
 ```bash
-docker pull ghcr.io/ai-team-uoa/recitals-cryptography-manager:latest
+git clone https://github.com/AI-team-UoA/RECITALS-cryptography-manager.git
+cd RECITALS-cryptography-manager
 
+docker build -t recitals-cryptography-manager .
 docker run -p 8000:8000 \
   -v "$(pwd)/config.yaml:/app/config.yaml:ro" \
   -v crm-audit:/app/audit \
-  ghcr.io/ai-team-uoa/recitals-cryptography-manager:latest
+  recitals-cryptography-manager
 ```
+
+Prebuilt images are published to
+`ghcr.io/ai-team-uoa/recitals-cryptography-manager` on every push to `main`,
+tagged `latest`, `main` and `sha-<commit>`.
+
+> **The package is currently private.** Pulling it requires authenticating to
+> the registry with a personal access token carrying the `read:packages` scope,
+> and membership of the organisation:
+>
+> ```bash
+> echo "$GITHUB_TOKEN" | docker login ghcr.io -u YOUR_USERNAME --password-stdin
+> docker pull ghcr.io/ai-team-uoa/recitals-cryptography-manager:latest
+> ```
+>
+> An organisation owner can make it public from the package's settings page,
+> after which the pull works anonymously and no login is needed.
 
 The image runs as an unprivileged user, exposes port 8000 and carries a
 healthcheck against `/health`. Audit records and privacy budget state are
@@ -372,7 +391,8 @@ and no aarch64 build.
 For local development and integration testing, `docker-compose.yml` brings the
 service up alongside stand-ins for the three downstream services it forwards
 audit records to, so that path is genuinely exercised rather than merely
-configured:
+configured. It builds from the working tree, so it needs no registry access
+either:
 
 ```bash
 docker compose up --build
