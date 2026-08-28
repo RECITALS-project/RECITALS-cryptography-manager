@@ -6,14 +6,22 @@ providing clear error handling and debugging information.
 """
 
 
-class ImportError(Exception):
-    """Base exception for all import errors."""
+class BackendImportError(Exception):
+    """Raised when an optional cryptographic backend cannot be imported.
+
+    Deliberately *not* named ``ImportError``: shadowing the builtin makes
+    ``except ImportError`` inside this package silently stop catching real
+    import failures.
+    """
 
     pass
 
 
 class CryptographyManagerError(Exception):
     """Base exception for all Cryptography Manager errors."""
+
+    message: str
+    error_code: str | None
 
     def __init__(self, message: str, error_code: str | None = None) -> None:
         """Initialize the base exception.
@@ -27,8 +35,37 @@ class CryptographyManagerError(Exception):
         self.error_code = error_code
 
 
+class OperationNotImplementedError(CryptographyManagerError):
+    """Raised for a recognised operation that has no adapter yet.
+
+    Distinct from an unknown operation: the request was well-formed and names
+    something the component intends to support, so the caller should be told
+    "not yet" rather than "no such thing".
+    """
+
+    operation: str | None
+
+    def __init__(
+        self,
+        message: str,
+        operation: str | None = None,
+        error_code: str | None = None,
+    ) -> None:
+        """Initialize the not-implemented error.
+
+        Args:
+            message: Human-readable error message
+            operation: The operation that is not yet available
+            error_code: Optional error code for programmatic handling
+        """
+        super().__init__(message, error_code)
+        self.operation = operation
+
+
 class ConfigurationError(CryptographyManagerError):
     """Raised when there are configuration-related errors."""
+
+    config_key: str | None
 
     def __init__(
         self,
@@ -49,6 +86,9 @@ class ConfigurationError(CryptographyManagerError):
 
 class AdapterError(CryptographyManagerError):
     """Raised when there are adapter-related errors."""
+
+    adapter_name: str | None
+    operation: str | None
 
     def __init__(
         self,
@@ -73,6 +113,9 @@ class AdapterError(CryptographyManagerError):
 class KeyManagementError(CryptographyManagerError):
     """Raised when there are key management-related errors."""
 
+    key_id: str | None
+    operation: str | None
+
     def __init__(
         self,
         message: str,
@@ -96,6 +139,8 @@ class KeyManagementError(CryptographyManagerError):
 class AuditError(CryptographyManagerError):
     """Raised when there are audit logging-related errors."""
 
+    operation: str | None
+
     def __init__(
         self,
         message: str,
@@ -115,6 +160,8 @@ class AuditError(CryptographyManagerError):
 
 class HomomorphicEncryptionError(AdapterError):
     """Raised when there are homomorphic encryption-related errors."""
+
+    scheme: str | None
 
     def __init__(
         self,
@@ -140,6 +187,8 @@ class HomomorphicEncryptionError(AdapterError):
 class SecureMultiPartyComputationError(AdapterError):
     """Raised when there are secure multi-party computation-related errors."""
 
+    protocol: str | None
+
     def __init__(
         self,
         message: str,
@@ -164,6 +213,8 @@ class SecureMultiPartyComputationError(AdapterError):
 class DifferentialPrivacyError(AdapterError):
     """Raised when there are differential privacy-related errors."""
 
+    mechanism: str | None
+
     def __init__(
         self,
         message: str,
@@ -187,6 +238,8 @@ class DifferentialPrivacyError(AdapterError):
 
 class StandardCryptographyError(AdapterError):
     """Raised when there are standard cryptography-related errors."""
+
+    algorithm: str | None
 
     def __init__(
         self,
