@@ -378,14 +378,19 @@ class EncryptionAdapter(CryptographicAdapter):
     ) -> tink.KeysetHandle:
         """Build a keyset handle from a request's ``key_config``.
 
-        Supports an inline serialised keyset, a filesystem path, or generating
-        an ephemeral one. Key material supplied inline is never echoed back.
+        A keyset must be supplied, either inline or as a path. Falling back to
+        generating one would be actively harmful: encrypting under a key the
+        caller never receives produces ciphertext that nobody can ever decrypt,
+        and reports success while doing it.
 
         Args:
-            key_config: Key generation or loading configuration.
+            key_config: Key loading configuration.
 
         Returns:
             A keyset handle.
+
+        Raises:
+            KeyManagementError: If no keyset is supplied, or it cannot be read.
         """
         config = key_config or {}
         if "keyset" in config:
@@ -398,7 +403,13 @@ class EncryptionAdapter(CryptographicAdapter):
                     operation="load_keyset",
                 )
             return self.load_keyset(keyset_path.read_text(encoding="utf-8"))
-        return self.generate_keyset(config.get("template", DEFAULT_TEMPLATE))
+        raise KeyManagementError(
+            "key_config must supply a keyset, as either 'keyset' or "
+            "'keyset_path'. Generate one first with the key_management "
+            "operation and its generate_key action, then keep it: this "
+            "component stores no key material.",
+            operation="load_keyset",
+        )
 
     def execute(
         self,
@@ -480,7 +491,6 @@ class EncryptionAdapter(CryptographicAdapter):
                     algorithm="aead",
                     operation="decrypt",
                 )
-            handle = self._resolve_keyset(key_config)
             try:
                 raw = base64.b64decode(
                     str(input_data["ciphertext"]), validate=True
@@ -491,6 +501,7 @@ class EncryptionAdapter(CryptographicAdapter):
                     algorithm="aead",
                     operation="decrypt",
                 )
+            handle = self._resolve_keyset(key_config)
             plaintext = self.decrypt_bytes(raw, handle, associated)
             return (
                 {"plaintext": plaintext.decode("utf-8", errors="replace")},

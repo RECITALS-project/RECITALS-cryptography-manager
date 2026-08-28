@@ -28,6 +28,7 @@ class WorkflowStatus(str, Enum):
     VALIDATION_ERROR = "VALIDATION_ERROR"
     FAILED = "FAILED"
     NOT_IMPLEMENTED = "NOT_IMPLEMENTED"
+    PAYLOAD_TOO_LARGE = "PAYLOAD_TOO_LARGE"
 
     @property
     def is_success(self) -> bool:
@@ -48,6 +49,7 @@ _HTTP_STATUS: dict[WorkflowStatus, int] = {
     WorkflowStatus.UNAUTHORIZED: 403,
     WorkflowStatus.BUDGET_EXHAUSTED: 429,
     WorkflowStatus.NOT_IMPLEMENTED: 501,
+    WorkflowStatus.PAYLOAD_TOO_LARGE: 413,
     # A FAILED status means the backend raised during execution, after
     # validation had already passed -- so the request itself was well-formed
     # and the fault is ours, not the caller's. 500 is the honest default.

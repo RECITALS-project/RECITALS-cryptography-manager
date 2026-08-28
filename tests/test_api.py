@@ -381,3 +381,197 @@ class TestOpenAPI:
         spec = client.get("/openapi.json").json()
         responses = spec["paths"]["/cryptography"]["post"]["responses"]
         assert {"200", "400", "403", "429", "500", "501"} <= set(responses)
+
+
+class TestRequestSizeLimit:
+    """A DP request carries its dataset inline, so the body needs a ceiling.
+
+    Without one, a handful of concurrent large requests exhausts the process's
+    memory, and any caller holding a valid token can send them.
+    """
+
+    def test_a_request_within_the_limit_is_accepted(
+        self, client, auth_header, dp_request
+    ):
+        response = client.post(
+            "/cryptography", json=dp_request, headers=auth_header
+        )
+        assert response.status_code == 200
+
+    def test_an_oversized_body_is_refused(self, client, auth_header):
+        huge = {
+            "operation": "differential_privacy",
+            "backend": "pydp",
+            "input_data": {"data": list(range(3_000_000))},
+            "parameters": {"query_type": "Count", "epsilon_cost": 0.01},
+        }
+        response = client.post(
+            "/cryptography", json=huge, headers=auth_header
+        )
+        assert response.status_code == 413
+        assert response.json()["status"] == "PAYLOAD_TOO_LARGE"
+        assert "limit" in response.json()["errors"]
+
+    def test_the_limit_is_configurable(self, tmp_path, auth_header):
+        from fastapi.testclient import TestClient
+
+        from cryptography_manager.config.settings import Settings
+        from cryptography_manager.main import create_app
+
+        app = create_app(
+            Settings(
+                audit_log_path=str(tmp_path / "a.jsonl"),
+                budget_store_path=str(tmp_path / "b.json"),
+                max_request_bytes=200,
+            )
+        )
+        with TestClient(app) as tiny:
+            response = tiny.post(
+                "/cryptography",
+                headers=auth_header,
+                json={
+                    "operation": "differential_privacy",
+                    "backend": "pydp",
+                    "input_data": {"data": list(range(500))},
+                    "parameters": {
+                        "query_type": "Count",
+                        "epsilon_cost": 0.1,
+                    },
+                },
+            )
+            assert response.status_code == 413
+
+    def test_a_body_without_content_length_is_still_capped(
+        self, tmp_path, auth_header
+    ):
+        """A client can omit the header or send a chunked body.
+
+        The declared length cannot be trusted, so the stream is counted as it
+        arrives rather than only checked up front.
+        """
+        from fastapi.testclient import TestClient
+
+        from cryptography_manager.config.settings import Settings
+        from cryptography_manager.main import create_app
+
+        app = create_app(
+            Settings(
+                audit_log_path=str(tmp_path / "a.jsonl"),
+                budget_store_path=str(tmp_path / "b.json"),
+                max_request_bytes=500,
+            )
+        )
+
+        def chunks():
+            yield b'{"operation": "differential_privacy", '
+            yield b'"backend": "pydp", "input_data": {"data": ['
+            for _ in range(200):
+                yield b"1, " * 20
+            yield b"1]}}"
+
+        with TestClient(app) as tiny:
+            response = tiny.post(
+                "/cryptography",
+                headers={**auth_header, "Content-Type": "application/json"},
+                content=chunks(),
+            )
+            assert response.status_code == 413
+
+    def test_an_oversized_request_is_still_audited(
+        self, client, auth_header
+    ):
+        huge = {
+            "operation": "differential_privacy",
+            "backend": "pydp",
+            "input_data": {"data": list(range(3_000_000))},
+            "parameters": {"query_type": "Count", "epsilon_cost": 0.01},
+        }
+        client.post("/cryptography", json=huge, headers=auth_header)
+        records = read_audit(client)
+        assert records[-1]["status"] == "PAYLOAD_TOO_LARGE"
+        assert records[-1]["user_id"]
+
+    def test_the_dataset_is_not_retained_in_the_audit_record(
+        self, client, auth_header
+    ):
+        huge = {
+            "operation": "differential_privacy",
+            "backend": "pydp",
+            "input_data": {"data": list(range(3_000_000))},
+            "parameters": {"query_type": "Count", "epsilon_cost": 0.01},
+        }
+        client.post("/cryptography", json=huge, headers=auth_header)
+        assert "[0, 1, 2" not in client.audit_file.read_text()
+
+    def test_size_is_checked_after_authorization(self, client):
+        """An anonymous caller is refused for the right reason."""
+        huge = {"operation": "differential_privacy", "backend": "pydp",
+                "input_data": {"data": list(range(3_000_000))}}
+        response = client.post("/cryptography", json=huge)
+        assert response.status_code == 403
+
+
+class TestMalformedBodies:
+    def test_invalid_json_is_refused(self, client, auth_header):
+        response = client.post(
+            "/cryptography",
+            headers={**auth_header, "Content-Type": "application/json"},
+            content=b"{not json",
+        )
+        assert response.status_code == 400
+        assert "not valid JSON" in response.json()["errors"]
+
+    def test_a_json_array_is_refused(self, client, auth_header):
+        response = client.post(
+            "/cryptography", headers=auth_header, json=[1, 2, 3]
+        )
+        assert response.status_code == 400
+        assert "must be a JSON object" in response.json()["errors"]
+
+    def test_an_empty_body_is_refused(self, client, auth_header):
+        response = client.post(
+            "/cryptography",
+            headers={**auth_header, "Content-Type": "application/json"},
+            content=b"",
+        )
+        assert response.status_code == 400
+
+    def test_malformed_bodies_are_audited(self, client, auth_header):
+        client.post(
+            "/cryptography",
+            headers={**auth_header, "Content-Type": "application/json"},
+            content=b"{not json",
+        )
+        assert read_audit(client)[-1]["status"] == "VALIDATION_ERROR"
+
+
+class TestKeysetRequired:
+    def test_encrypting_without_a_keyset_is_refused(
+        self, client, auth_header
+    ):
+        """This used to return 200 with permanently unrecoverable ciphertext."""
+        response = client.post(
+            "/cryptography",
+            headers=auth_header,
+            json={
+                "operation": "encryption",
+                "backend": "tink",
+                "input_data": {"plaintext": "irreplaceable"},
+                "parameters": {"action": "encrypt"},
+            },
+        )
+        assert response.status_code == 400
+        assert "must supply a keyset" in response.json()["errors"]
+
+    def test_the_refusal_says_how_to_get_a_keyset(self, client, auth_header):
+        response = client.post(
+            "/cryptography",
+            headers=auth_header,
+            json={
+                "operation": "encryption",
+                "backend": "tink",
+                "input_data": {"plaintext": "x"},
+                "parameters": {"action": "encrypt"},
+            },
+        )
+        assert "generate_key" in response.json()["errors"]

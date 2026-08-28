@@ -176,12 +176,52 @@ class TestAdapterInterface:
         )
         assert result["plaintext"] == "hello"
 
-    def test_key_info_returns_no_key_material(self, enc):
+    def test_key_info_returns_no_key_material(self, enc, keyset):
         result, meta = enc.execute(
-            action="key_info", input_data={}, parameters={}
+            action="key_info",
+            input_data={},
+            parameters={},
+            key_config={"keyset": enc.serialize_keyset(keyset)},
         )
         assert result == {}
         assert "keys" in meta["keyset_info"]
+
+    @pytest.mark.parametrize(
+        "action,input_data",
+        [
+            ("encrypt", {"plaintext": "irreplaceable"}),
+            ("decrypt", {"ciphertext": "AAAA"}),
+            ("rotate_key", {}),
+            ("key_info", {}),
+        ],
+    )
+    def test_a_keyset_is_mandatory(self, enc, action, input_data):
+        """Never invent a key for an operation that consumes one.
+
+        Encrypting under a generated key the caller never receives produces
+        ciphertext nobody can decrypt, and reports success while doing it.
+        """
+        with pytest.raises(KeyManagementError, match="must supply a keyset"):
+            enc.execute(
+                action=action, input_data=input_data, parameters={}
+            )
+
+    def test_generate_key_needs_no_existing_keyset(self, enc):
+        result, _ = enc.execute(
+            action="generate_key", input_data={}, parameters={}
+        )
+        assert "keyset" in result
+
+    def test_malformed_ciphertext_is_reported_before_the_keyset(self, enc):
+        """A bad payload should say so, not complain about a missing key."""
+        with pytest.raises(
+            StandardCryptographyError, match="not valid base64"
+        ):
+            enc.execute(
+                action="decrypt",
+                input_data={"ciphertext": "!!not-base64!!"},
+                parameters={},
+            )
 
     def test_rotate_through_the_adapter(self, enc, keyset):
         _, meta = enc.execute(
@@ -218,7 +258,6 @@ class TestAdapterInterface:
             ("bogus", {}, "Unsupported encryption action"),
             ("encrypt", {}, "must contain 'plaintext'"),
             ("decrypt", {}, "must contain 'ciphertext'"),
-            ("decrypt", {"ciphertext": "!!not-base64!!"}, "not valid base64"),
         ],
     )
     def test_bad_input_is_rejected(self, enc, action, input_data, match):

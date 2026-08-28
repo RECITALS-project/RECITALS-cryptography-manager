@@ -80,6 +80,50 @@ class CryptographyWorkflow:
         self.audit = audit
         self.budget_store = budget_store
 
+    def reject(
+        self,
+        status: WorkflowStatus,
+        user_id: str | None = None,
+        error: str | None = None,
+        operation: str | None = None,
+        backend: str | None = None,
+    ) -> WorkflowOutcome:
+        """Record a rejection that happened before execution could start.
+
+        Used for failures the request never survives long enough to reach the
+        main path, such as a body too large to parse or one that does not fit
+        the schema. It still writes an audit record, because a refused request
+        has to be as traceable as one that ran.
+
+        Args:
+            status: The workflow outcome.
+            user_id: Authenticated user, if known at this point.
+            error: Human-readable reason for the rejection.
+            operation: Requested operation, if it could be determined.
+            backend: Requested backend, if it could be determined.
+
+        Returns:
+            The outcome, carrying both status and response body.
+        """
+        record = self.audit.record(
+            status=status.value,
+            user_id=user_id,
+            operation=operation,
+            backend=backend,
+            execution_time=0.0,
+            parameters={},
+            error_message=error,
+        )
+        return WorkflowOutcome(
+            status,
+            CryptographyResponse(
+                status=status.value,
+                execution_time=0.0,
+                audit_id=record.audit_id,
+                errors=error,
+            ),
+        )
+
     def run(
         self,
         request: CryptographyRequest | None,

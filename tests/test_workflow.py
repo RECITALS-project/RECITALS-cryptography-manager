@@ -37,6 +37,7 @@ class TestStatusMapping:
             (WorkflowStatus.BUDGET_EXHAUSTED, 429),
             (WorkflowStatus.FAILED, 500),
             (WorkflowStatus.NOT_IMPLEMENTED, 501),
+            (WorkflowStatus.PAYLOAD_TOO_LARGE, 413),
         ],
     )
     def test_each_status_maps_to_its_code(self, status, code):
@@ -257,3 +258,30 @@ class TestAuditing:
     ):
         workflow.run(dp_request(), "alice")
         assert "[0, 1, 2" not in audit_path.read_text()
+
+
+class TestPreExecutionRejection:
+    """Rejections that never reach the main path still have to be recorded."""
+
+    def test_reject_writes_an_audit_record(self, workflow, audit_records):
+        workflow.reject(
+            WorkflowStatus.PAYLOAD_TOO_LARGE, "alice", "body too large"
+        )
+        records = audit_records()
+        assert len(records) == 1
+        assert records[0]["status"] == "PAYLOAD_TOO_LARGE"
+        assert records[0]["user_id"] == "alice"
+        assert records[0]["error_message"] == "body too large"
+
+    def test_the_response_references_that_record(self, workflow,
+                                                 audit_records):
+        outcome = workflow.reject(
+            WorkflowStatus.VALIDATION_ERROR, "alice", "bad json"
+        )
+        assert outcome.response.audit_id == audit_records()[0]["audit_id"]
+        assert outcome.response.errors == "bad json"
+        assert outcome.response.result is None
+
+    def test_rejection_costs_no_privacy_budget(self, workflow, budget_store):
+        workflow.reject(WorkflowStatus.PAYLOAD_TOO_LARGE, "alice", "too big")
+        assert budget_store.remaining("alice") == 1.0

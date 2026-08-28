@@ -218,6 +218,39 @@ that was never accounted for.
 `key_info`. Keysets are supplied through `key_config` as either
 `{"keyset": "<json>"}` or `{"keyset_path": "..."}`.
 
+**This component stores no key material.** `generate_key` returns the keyset to
+the caller, who is responsible for keeping it and passing it back on every
+subsequent call. Any operation that consumes a key requires one to be supplied:
+generating a key implicitly would produce ciphertext that nobody could ever
+decrypt, while reporting success.
+
+A typical exchange:
+
+```bash
+# 1. Create a keyset and keep it. This is the only time it is handed out.
+KEYSET=$(curl -s -X POST http://127.0.0.1:8000/cryptography \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"operation":"key_management","backend":"tink","input_data":{},
+       "parameters":{"action":"generate_key"}}' | jq -r .result.keyset)
+
+# 2. Encrypt, passing the keyset back in key_config.
+curl -X POST http://127.0.0.1:8000/cryptography \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d "$(jq -n --arg ks "$KEYSET" '{operation:"encryption",backend:"tink",
+        input_data:{plaintext:"sensitive"},
+        parameters:{action:"encrypt",associated_data:"ctx"},
+        key_config:{keyset:$ks}}')"
+```
+
+`rotate_key` returns the keyset with a new primary key added and the previous
+keys retained, so ciphertext produced before the rotation still decrypts
+afterwards. Keysets never appear in audit records.
+
+Because the keyset travels in the request body, deployments handling real data
+should terminate TLS in front of the service, and would be better served by a
+keyset wrapped with a key management service. Tink supports GCP KMS, AWS KMS
+and Vault natively, so that is an extension rather than a redesign.
+
 ### Response
 
 | Field | Type | Notes |
@@ -237,6 +270,7 @@ that was never accounted for.
 | 400 | `VALIDATION_ERROR` | Parameters or configuration invalid |
 | 400 | `INSUFFICIENT_BUDGET` | Requested cost exceeds remaining budget |
 | 403 | `UNAUTHORIZED` | Token missing or invalid |
+| 413 | `PAYLOAD_TOO_LARGE` | Request body exceeds the configured limit |
 | 429 | `BUDGET_EXHAUSTED` | No privacy budget remains |
 | 500 | `FAILED` | Backend raised during execution |
 | 501 | `NOT_IMPLEMENTED` | Operation recognised but not yet available |
@@ -262,6 +296,7 @@ so the same file can be mounted anywhere unchanged.
 | `CRM_AUDIT_LOG_PATH` | `./audit/crm-audit.jsonl` | Local audit trail |
 | `CRM_BUDGET_STORE_PATH` | `./audit/budgets.json` | Per-user budget state; unset to keep in memory |
 | `CRM_LOG_LEVEL` | `INFO` | Log verbosity (alias: `LOG_LEVEL`) |
+| `CRM_MAX_REQUEST_BYTES` | `10485760` | Largest accepted request body (10 MiB) |
 
 ### Authentication
 

@@ -127,6 +127,15 @@ class Settings(BaseSettings):
         default="INFO",
         validation_alias=AliasChoices("CRM_LOG_LEVEL", "LOG_LEVEL"),
     )
+    max_request_bytes: int = Field(
+        default=10 * 1024 * 1024,
+        gt=0,
+        description=(
+            "Largest request body accepted. A differential privacy request "
+            "carries its dataset inline, so without a ceiling a few "
+            "concurrent callers can exhaust the process's memory."
+        ),
+    )
 
     @model_validator(mode="after")
     def _check_oidc_configured(self) -> "Settings":

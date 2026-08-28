@@ -1,19 +1,21 @@
 """
 HTTP routes.
 
-The request body is accepted as a raw mapping and validated inside the handler
-rather than through a typed signature. That is deliberate: the framework would
-otherwise reject a malformed body before the handler runs, which would both
-bypass the audit trail and answer an unauthenticated caller with a schema
-complaint instead of a refusal. Authorization is therefore always decided
-first, and every rejection still produces an audit record.
+The request body is read and validated inside the handler rather than through
+a typed signature. That is deliberate: the framework would otherwise consume
+and parse the body before the handler runs, which would bypass the audit trail,
+answer an unauthenticated caller with a schema complaint instead of a refusal,
+and buffer an arbitrarily large payload before anyone had a chance to object.
+Authorization is decided first, the body is then read under a size ceiling, and
+every rejection still produces an audit record.
 """
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
-from fastapi import APIRouter, Body, Header, Request
+from fastapi import APIRouter, Header, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
@@ -52,6 +54,7 @@ async def health(request: Request) -> dict[str, Any]:
         403: {"description": "Authorization token missing or invalid"},
         429: {"description": "Privacy budget exhausted"},
         500: {"description": "Unexpected execution error"},
+        413: {"description": "Request body exceeds the configured limit"},
         501: {"description": "Operation recognised but not implemented"},
     },
     openapi_extra={
@@ -67,14 +70,12 @@ async def health(request: Request) -> dict[str, Any]:
 )
 async def cryptography(
     request: Request,
-    payload: dict[str, Any] = Body(default_factory=dict),
     authorization: str | None = Header(default=None),
 ) -> JSONResponse:
     """Execute one cryptographic operation.
 
     Args:
         request: The incoming request, carrying application state.
-        payload: The request envelope.
         authorization: Bearer token issued by the identity provider.
 
     Returns:
@@ -88,18 +89,80 @@ async def cryptography(
         outcome = workflow.run(None, None, auth.error)
         return _respond(outcome.status, outcome.response)
 
+    limit = state.settings.max_request_bytes
+    body, oversized = await _read_capped(request, limit)
+    if oversized:
+        outcome = workflow.reject(
+            WorkflowStatus.PAYLOAD_TOO_LARGE,
+            auth.user_id,
+            f"Request body exceeds the {limit} byte limit",
+        )
+        return _respond(outcome.status, outcome.response)
+
+    try:
+        payload = json.loads(body) if body.strip() else {}
+    except json.JSONDecodeError as exc:
+        outcome = workflow.reject(
+            WorkflowStatus.VALIDATION_ERROR,
+            auth.user_id,
+            f"Request body is not valid JSON: {exc}",
+        )
+        return _respond(outcome.status, outcome.response)
+
+    if not isinstance(payload, dict):
+        outcome = workflow.reject(
+            WorkflowStatus.VALIDATION_ERROR,
+            auth.user_id,
+            "Request body must be a JSON object",
+        )
+        return _respond(outcome.status, outcome.response)
+
     try:
         parsed = CryptographyRequest.model_validate(payload)
     except ValidationError as exc:
-        # Validation failures are run back through the workflow so that a
-        # malformed request is audited exactly like any other outcome.
-        outcome = workflow.run(None, auth.user_id, None)
-        outcome.response.status = WorkflowStatus.VALIDATION_ERROR.value
-        outcome.response.errors = _render(exc)
-        return _respond(WorkflowStatus.VALIDATION_ERROR, outcome.response)
+        outcome = workflow.reject(
+            WorkflowStatus.VALIDATION_ERROR, auth.user_id, _render(exc)
+        )
+        return _respond(outcome.status, outcome.response)
 
     outcome = workflow.run(parsed, auth.user_id)
     return _respond(outcome.status, outcome.response)
+
+
+async def _read_capped(
+    request: Request, limit: int
+) -> tuple[bytes, bool]:
+    """Read a request body, refusing to buffer more than ``limit`` bytes.
+
+    A declared Content-Length is checked first, which rejects an honest
+    oversized client without reading anything. The stream is then counted as
+    it arrives, because a client can omit the header or send a chunked body
+    and the declared length cannot be trusted either way.
+
+    Args:
+        request: The incoming request.
+        limit: Largest body to accept, in bytes.
+
+    Returns:
+        The body, and whether the limit was exceeded. When it was, the body
+        is empty: it is deliberately not retained.
+    """
+    declared = request.headers.get("content-length")
+    if declared is not None:
+        try:
+            if int(declared) > limit:
+                return b"", True
+        except ValueError:
+            pass
+
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > limit:
+            return b"", True
+        chunks.append(chunk)
+    return b"".join(chunks), False
 
 
 def _respond(
