@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { name = "Georgios Stamoulis", email = "gstam@di.uoa.gr" },
     { name = "Konstantinos Chousos", email = "kchousos@di.uoa.gr" },
-    { name = "Dimitris Pavlou", email = "sdi2100151@di.uoa.gr" },
+    { name = "Dimitris Pavlou", email = "dimpavlou@di.uoa.gr" },
 ]
 requires-python = ">=3.10,<3.13"
 dependencies = [

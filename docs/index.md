@@ -12,8 +12,8 @@
 
 | Name | Role | Contact |
 | --- | --- | --- |
-| Dimitrios Pavlou | Development | <sdi2100151@di.uoa.gr> |
 | Konstantinos Chousos | Development | <kchousos@di.uoa.gr> |
+| Dimitrios Pavlou | Development | <dimpavlou@di.uoa.gr> |
 | George Stamoulis | Supervision | <gstam@di.uoa.gr> |
 
 ## Funding
