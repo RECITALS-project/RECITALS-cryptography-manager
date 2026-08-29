@@ -8,3 +8,6 @@ examples/*.enc
 examples/*.dec
 audit/
 *.jsonl
+
+# Built documentation site
+site/

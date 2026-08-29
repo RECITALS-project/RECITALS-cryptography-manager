@@ -5,8 +5,15 @@
 <p align="center">
     Differential privacy, encryption and key management for the RECITALS platform
 </p>
+<p align="center">
+    <a href="https://ai-team-uoa.github.io/RECITALS-cryptography-manager/"><b>Documentation</b></a>
+    &nbsp;&middot;&nbsp;
+    <a href="https://ai-team-uoa.github.io/RECITALS-cryptography-manager/reference/"><b>API Reference</b></a>
+</p>
 
 ## Overview
+
+<!-- --8<-- [start:overview] -->
 
 The RECITALS Cryptography Manager (CrM) is a modular Python library and REST
 service that brings privacy-preserving and cryptographic operations to the
@@ -47,7 +54,11 @@ Homomorphic encryption and secure multi-party computation are recognised
 operations with a settled request shape, so adding them means writing one
 adapter each rather than reworking the interface.
 
+<!-- --8<-- [end:overview] -->
+
 ## Dependencies
+
+<!-- --8<-- [start:dependencies] -->
 
 The **Cryptography Manager** delegates all cryptographic work to established
 open-source libraries, so that the privacy and security guarantees rest on
@@ -94,7 +105,11 @@ The manager leverages a modern Python stack for performance and reliability:
 * **Loguru**: Structured application logging.
 * **Pytest**: Automated testing and quality assurance.
 
+<!-- --8<-- [end:dependencies] -->
+
 ## Installation
+
+<!-- --8<-- [start:installation] -->
 
 1. Install [uv](https://docs.astral.sh/uv/) package/project manager
 
@@ -118,7 +133,11 @@ toolchain and CMake. `smpc` installs **MPyC**; PySyft is deliberately absent,
 because its pinned `numpy` and `pandas` versions cannot be satisfied alongside
 this project's, and `uv` resolves every extra into a single lockfile.
 
+<!-- --8<-- [end:installation] -->
+
 ## Usage
+
+<!-- --8<-- [start:usage] -->
 
 ### As a library
 
@@ -178,7 +197,11 @@ curl -X POST http://127.0.0.1:8000/cryptography \
 Interactive API documentation is served at `/docs`, and a liveness and
 capability report at `/health`.
 
+<!-- --8<-- [end:usage] -->
+
 ## API
+
+<!-- --8<-- [start:api] -->
 
 A single endpoint executes every operation.
 
@@ -275,7 +298,11 @@ and Vault natively, so that is an extension rather than a redesign.
 | 500 | `FAILED` | Backend raised during execution |
 | 501 | `NOT_IMPLEMENTED` | Operation recognised but not yet available |
 
+<!-- --8<-- [end:api] -->
+
 ## Configuration
+
+<!-- --8<-- [start:configuration] -->
 
 Cryptographic parameters live in `config.yaml` (privacy budgets, data bounds,
 the library query plan). Deployment concerns come from environment variables,
@@ -338,7 +365,11 @@ tokens, passwords and secret shares are redacted by key name, and bulk data is
 reduced to a size summary, so a record says how much was processed without
 saying what it was.
 
+<!-- --8<-- [end:configuration] -->
+
 ## Examples & Testing
+
+<!-- --8<-- [start:examples] -->
 
 ### Testing
 
@@ -367,7 +398,7 @@ uv run basedpyright src/
 
 ### Examples
 
-Detailed workflow examples can be found in the [**/examples**](./examples)
+Detailed workflow examples can be found in the [**/examples**](https://github.com/AI-team-UoA/RECITALS-cryptography-manager/tree/main/examples)
 directory.
 
 To execute an example script, use the following command:
@@ -379,11 +410,15 @@ uv run examples/dp.py
 
 | Script | Demonstrates |
 | --- | --- |
-| [`dp.py`](./examples/dp.py) | A configured plan of differentially private queries over a CSV |
-| [`encryption.py`](./examples/encryption.py) | Encryption, tamper detection and key rotation |
-| [`api_client.py`](./examples/api_client.py) | The REST API end to end, including budget exhaustion |
+| [`dp.py`](https://github.com/AI-team-UoA/RECITALS-cryptography-manager/blob/main/examples/dp.py) | A configured plan of differentially private queries over a CSV |
+| [`encryption.py`](https://github.com/AI-team-UoA/RECITALS-cryptography-manager/blob/main/examples/encryption.py) | Encryption, tamper detection and key rotation |
+| [`api_client.py`](https://github.com/AI-team-UoA/RECITALS-cryptography-manager/blob/main/examples/api_client.py) | The REST API end to end, including budget exhaustion |
+
+<!-- --8<-- [end:examples] -->
 
 ## Deployment
+
+<!-- --8<-- [start:deployment] -->
 
 The service runs as a container. Building from a clone needs no registry
 access and is the quickest way to get an instance up:
@@ -439,7 +474,11 @@ on Python 3.10, 3.11 and 3.12, then builds the image, smoke-tests it, and
 publishes to the registry. Pull requests build the image to prove the
 Dockerfile still works but never publish it.
 
+<!-- --8<-- [end:deployment] -->
+
 ## Roadmap
+
+<!-- --8<-- [start:roadmap] -->
 
 - Homomorphic encryption and secure multi-party computation adapters.
 - A Helm chart for Kubernetes deployment.
@@ -448,6 +487,8 @@ Dockerfile still works but never publish it.
 - JSON-LD output. The vocabulary needs to align with the compliance manager's
   graphs, which are not settled yet, so `output_format` currently accepts only
   `json` rather than silently ignoring the field.
+
+<!-- --8<-- [end:roadmap] -->
 
 ## Contributors
 

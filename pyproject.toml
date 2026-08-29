@@ -70,8 +70,18 @@ dev = [
     "pytest>=8.3.0",
     "ruff>=0.13.1",
 ]
+# Documentation site. mkdocstrings reads the Google-style docstrings straight
+# out of the source, and griffe does it by static analysis, so building the
+# docs needs neither the package installed nor the optional backends present.
 docs = [
-    "pdoc>=15.0.4",
+    # Capped below 2.0: that release removes the plugin system outright, which
+    # would take mkdocstrings and the Material theme with it.
+    "mkdocs>=1.6.1,<2",
+    "mkdocs-material>=9.5.0",
+    "mkdocstrings[python]>=0.27.0",
+    # mkdocstrings formats the rendered signatures with ruff when it is
+    # present, and leaves them on one long line when it is not.
+    "ruff>=0.13.1",
 ]
 
 [build-system]
