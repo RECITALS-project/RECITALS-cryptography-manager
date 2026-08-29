@@ -1,7 +1,7 @@
 [project]
 name = "cryptography-manager"
 version = "0.2.0"
-description = "Anonymization component for the RECITALS platform"
+description = "Differential privacy, encryption and key management for the RECITALS platform"
 readme = "README.md"
 authors = [
     { name = "Georgios Stamoulis", email = "gstam@di.uoa.gr" },
